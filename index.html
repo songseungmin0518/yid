@@ -1,219 +1,172 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>안전한 등굣길 지도</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    :root {
-      --bg: #f5f6f7;
-      --panel: rgba(255,255,255,0.85);
-      --border: rgba(0,0,0,0.08);
-      --text: #0b0c0e;
-      --muted: #6b7280;
-    }
-    *{box-sizing:border-box;margin:0;padding:0}
-    html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--text)}
-    .app{display:grid;grid-template-columns:320px 1fr;height:100%}
-    #map{width:100%;height:100%}
-
-    /* Desktop sidebar */
-    aside{display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--panel);backdrop-filter:blur(16px)}
-    .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
-    .title{font-weight:700;font-size:16px;letter-spacing:.2px}
-    .btn{border:none;background:#111;color:#fff;font-size:13px;padding:8px 12px;border-radius:10px;cursor:pointer}
-    .btn.secondary{background:#f3f4f6;color:#111}
-    .list{flex:1;overflow-y:auto;padding:12px 16px;display:grid;gap:8px}
-    .poi{background:#fff;border:1px solid var(--border);border-radius:14px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center}
-    .poi-name{font-size:14px;font-weight:600}
-    .poi-meta{font-size:12px;color:var(--muted)}
-    .hint{font-size:11px;color:var(--muted);padding:8px 16px;border-top:1px dashed var(--border)}
-
-    /* Mobile: hide sidebar, show map-topbar overlay */
-    .map-topbar{display:none;} /* default hidden on desktop */
-    @media(max-width: 900px){
-      .app{grid-template-columns:1fr}
-      aside{display:none}
-      .map-topbar{
-        display:flex; gap:8px; align-items:center;
-        position:fixed; top:0; left:0; right:0; z-index:1000;
-        padding:10px 12px;
-        background:rgba(255,255,255,0.9);
-        backdrop-filter: blur(14px);
-        border-bottom:1px solid var(--border);
-      }
-      .map-topbar .title{font-size:15px; font-weight:700}
-      .map-topbar .btn{padding:8px 10px; border-radius:10px; font-size:13px}
-      .map-topbar select{
-        height:34px; border-radius:10px; border:1px solid var(--border);
-        padding:0 10px; background:#fff; font-size:13px; flex:1;
-      }
-      #map{margin-top:58px} /* leave room for the fixed topbar */
-    }
-
-    /* Dark Mode */
-    @media (prefers-color-scheme: dark){
-      :root{ --bg:#0b0c0e; --panel:rgba(20,20,22,.7); --text:#e5e7eb; --border:rgba(255,255,255,.08); }
-      .poi{background:#191a1c;border-color:var(--border)}
-      .btn.secondary{background:#1f2937;color:#e5e7eb}
-      .map-topbar{background:rgba(20,20,22,.86)}
-    }
-  </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>빛나눔 프로젝트</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  html,body,#map{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans KR",sans-serif;}
+  #title{
+    position:fixed;top:14px;left:50%;transform:translateX(-50%);
+    background:rgba(255,255,255,.85);backdrop-filter:blur(6px);
+    padding:6px 14px;border-radius:12px;
+    font-weight:600;font-size:15px;z-index:1000;
+    box-shadow:0 2px 10px rgba(0,0,0,.1);
+  }
+  .speed-pill{
+    position:fixed;right:14px;top:14px;z-index:1000;
+    background:rgba(17,17,17,.85);color:#fff;border-radius:999px;
+    padding:8px 14px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.15)
+  }
+  .legend{
+    position:fixed;right:14px;bottom:14px;z-index:1000;
+    background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.1);
+    border-radius:10px;padding:10px 12px;font-size:12px;
+    box-shadow:0 2px 10px rgba(0,0,0,.1);
+  }
+  .row{display:flex;align-items:center;gap:6px;margin-top:4px}
+  .chip{width:20px;height:8px;border-radius:4px}
+  .dev-badge{
+    position:fixed;left:14px;bottom:14px;z-index:1000;
+    background:rgba(255,255,255,.85);border:1px solid rgba(0,0,0,.1);
+    border-radius:999px;padding:6px 10px;font-size:12px;
+    box-shadow:0 2px 10px rgba(0,0,0,.08)
+  }
+</style>
 </head>
 <body>
-<div class="app">
-  <!-- Desktop Sidebar -->
-  <aside id="sidebar">
-    <div class="topbar">
-      <span class="title">안전한 등굣길</span>
-      <div>
-        <button class="btn secondary" id="fitBtn" title="모든 원 보기">전체</button>
-        <button class="btn" id="locBtn" title="내 위치 보기">내 위치</button>
-      </div>
-    </div>
-    <div class="list" id="poiList"></div>
-    <div class="hint">목록을 탭하면 해당 지점으로 확대됩니다. (모바일은 상단 바에서 조작)</div>
-  </aside>
-
-  <!-- Map -->
-  <main id="map"></main>
-
-  <!-- Mobile Top Bar (항상 CSS로 제어; JS 불필요) -->
-  <div class="map-topbar" id="mapTopbar" aria-label="모바일 상단 조작 바">
-    <span class="title">등굣길</span>
-    <select id="poiSelect" aria-label="지점 선택">
-      <option value="">지점 선택…</option>
-    </select>
-    <button class="btn secondary" id="mFitBtn">전체</button>
-    <button class="btn" id="mLocBtn">내 위치</button>
-  </div>
+<div id="map"></div>
+<div id="title">빛나눔 프로젝트</div>
+<div class="speed-pill"><span id="spd">-.-</span> km/h</div>
+<div class="legend">
+  <b>위험 구간</b>
+  <div class="row"><span class="chip" style="background:#e53935"></span>높음(빨강)</div>
+  <div class="row"><span class="chip" style="background:#ff7a00"></span>주의(주황)</div>
+  <div class="row"><span class="chip" style="background:#00c853"></span>낮음(초록)</div>
 </div>
+<div class="dev-badge">Developer : <span id="dev-name"></span></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-// ===== 데이터 (예시) =====
-const POINTS = [
-  {name:"학교 앞",count:10},
-  {name:"여의나루역",count:7},
-  {name:"여의도 시범아파트",count:3},
-  {name:"여의도중학교",count:3}
-];
+const DEV_NAME = "송승민 (10710)";
+document.getElementById('dev-name').textContent = DEV_NAME;
 
-// ===== 지도: CARTO light_all (원래대로) =====
-const map = L.map('map').setView([37.5239,126.9270],14);
+/* ===== 지도 설정 ===== */
+const map = L.map('map', { zoomControl:false }).setView([37.5249,126.9335], 16);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
-  attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:20
+  subdomains:'abcd',maxZoom:20,attribution:'© OpenStreetMap & CARTO'
 }).addTo(map);
 
-const bounds = L.latLngBounds();
-const circles = [];
-const minCount = Math.min(...POINTS.map(p=>p.count));
-const maxCount = Math.max(...POINTS.map(p=>p.count));
-function scale(val,inMin,inMax,outMin,outMax){
-  if (inMax === inMin) return (outMin+outMax)/2;
-  return outMin + (val-inMin)*(outMax-outMin)/(inMax-inMin);
-}
+/* ===== 위험 구간 표시 ===== */
+function drawLine(coords,color){L.polyline(coords,{color,weight:6,opacity:.95}).addTo(map);}
+/* ===== 장미 - 정문 ===== */
+const red1=[[37.523572,126.933236],[37.524846,126.935203]];
 
-// Focus Mode
-function focusOnly(name){
-  circles.forEach(c=>{
-    const on = (c.options._name === name);
-    c.setStyle({ fillOpacity: on ? 0.85 : 0.15, opacity: on ? 1 : 0.2 });
-  });
-}
+/* ===== 장미 - 화랑 ===== */
+const red2=[[37.523572,126.933236],[37.521413, 126.935403]];
 
-// 원 생성
-function addCircle(lat,lng,name,count){
-  const radius = scale(count,minCount,maxCount,70,220);
-  const circle = L.circle([lat,lng],{
-    radius,
-    color:"#7f1d1d",
-    weight:1.2,
-    fillColor:"#ef4444",
-    fillOpacity:0.68,
-    _name:name
-  }).addTo(map);
-  circle.bindPopup(`<b>${name}</b><br>언급수: ${count}`);
-  circle.on('click', ()=>{ focusOnly(name); });
-  circles.push(circle);
-  bounds.extend([lat,lng]);
-}
+/* ===== 공작상가 - 여의나루 ===== */
+const red3=[[37.525388,126.930203],[37.526851,126.932534]];
 
-// 좌표(샘플)
-const coords = {
-  "학교 앞":[37.5241,126.9345],
-  "여의나루역":[37.5271,126.9327],
-  "여의도 시범아파트":[37.5230,126.9350],
-  "여의도중학교":[37.5200,126.9330]
-};
-for(const p of POINTS){
-  const [lat,lng]=coords[p.name];
-  addCircle(lat,lng,p.name,p.count);
-}
-if (bounds.isValid()) map.fitBounds(bounds);
+/* ==================================================================== */
 
-// Desktop 사이드바 목록
-function renderList(){
-  const host=document.getElementById("poiList"); if(!host) return;
-  host.innerHTML="";
-  for(const p of POINTS){
-    const el=document.createElement("div");
-    el.className="poi";
-    el.innerHTML=`<div><div class="poi-name">${p.name}</div><div class="poi-meta">${p.count}건</div></div><button class="btn secondary" data-name="${p.name}">보기</button>`;
-    host.appendChild(el);
+/* ===== 수정앞 - 장미 ===== */
+const orange1=[[37.522027,126.930762],[37.523572,126.933236]];
+
+/* ===== 여초 - 여의나루 ===== */
+const orange2=[[37.522933,126.937712],[37.526851,126.932534]];
+
+/* ===== 파바 - 여초 ===== */
+const orange3=[[37.520660,126.934149],[37.522933,126.937712]];
+
+/* ===== 브라이튼 - 공작상가 ===== */
+const orange4=[[37.524341,126.928403],[37.525388,126.930203]];
+
+/* ===== 공작상가 - 공작아파트 ===== */
+const orange5=[[37.525388,126.930203],[37.526411,126.929161]];
+
+/* ===== 서울아파트 - 여의나루 ===== */
+const orange6=[[37.527444,126.931781],[37.526851,126.932534]];
+
+/* ==================================================================== */
+
+/* ===== 브라이튼 - 한양상가 ===== */
+const green1=[[37.524341,126.928403],[37.519886,126.932920]];
+
+/* ===== 한양상가 - 파바 ===== */
+const green2=[[37.519886,126.932920],[37.520660,126.934149]];
+
+/* ===== 파바 - 브라이튼과 페어몬트 사이===== */
+const green3=[[37.520660,126.934149],[37.525093,126.929737]];
+
+
+
+[red1,red2,red3].forEach(l=>drawLine(l,"#e53935"));
+[orange1,orange2,orange3,orange4,orange5,orange6].forEach(l=>drawLine(l,"#ff7a00"));
+[green1,green2,green3].forEach(l=>drawLine(l,"#00c853"));
+
+/* ===== 실시간 위치 추적 ===== */
+let marker=null, circle=null, watchId=null, lastFix=null, speedEMA=null;
+const spdEl=document.getElementById('spd');
+
+function haversine(lat1,lon1,lat2,lon2){
+  const R=6371000,toRad=x=>x*Math.PI/180;
+  const dLat=toRad(lat2-lat1),dLon=toRad(lon2-lon1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function updateSpeed(kmh){
+  const a=0.3;
+  speedEMA=(speedEMA==null)?kmh:a*kmh+(1-a)*speedEMA;
+  spdEl.textContent=(speedEMA??kmh).toFixed(1);
+}
+function showLocation(lat,lng,acc,ts,spd){
+  const latlng=[lat,lng];
+  if(!marker){marker=L.marker(latlng,{title:"내 위치"}).addTo(map);}else marker.setLatLng(latlng);
+  if(!circle){circle=L.circle(latlng,{radius:acc||30,color:"#1976d2",weight:2,opacity:.9,fillColor:"#42a5f5",fillOpacity:.2}).addTo(map);}
+  else{circle.setLatLng(latlng);if(acc)circle.setRadius(acc);}
+  let mps=(typeof spd==='number'&&isFinite(spd))?spd:NaN;
+  if(!isFinite(mps)&&lastFix){
+    const dt=(ts-lastFix.time)/1000;
+    if(dt>0.5&&dt<20){
+      const dist=haversine(lastFix.lat,lastFix.lng,lat,lng);
+      mps=(dist<Math.max(acc||10,10))?0:dist/dt;
+    }
   }
-  host.querySelectorAll("button[data-name]").forEach(btn=>{
-    btn.addEventListener("click",()=>{
-      const name=btn.dataset.name;
-      const [lat,lng]=coords[name];
-      map.setView([lat,lng],17,{animate:true});
-      focusOnly(name);
-    });
-  });
+  const kmh=isFinite(mps)?mps*3.6:NaN;
+  if(isFinite(kmh))updateSpeed(kmh);
+  map.setView(latlng, map.getZoom(), {animate:true});
+  lastFix={lat,lng,time:ts};
 }
-renderList();
 
-// Mobile 상단 바 셀렉트 (항상 존재, CSS가 표시 제어)
-(function setupMobileTopbar(){
-  const sel = document.getElementById("poiSelect");
-  sel.innerHTML = '<option value="">지점 선택…</option>';
-  for(const p of POINTS){ 
-    const opt = document.createElement('option'); 
-    opt.value = p.name; opt.textContent = `${p.name} · ${p.count}`; 
-    sel.appendChild(opt);
-  }
-  sel.onchange = ()=>{
-    const name = sel.value;
-    if(!name) return;
-    const [lat,lng] = coords[name];
-    map.setView([lat,lng], 17, {animate:true});
-    focusOnly(name);
-  };
-})();
-
-// 위치 기능 (공용 버튼)
-let myMarker,myCircle;
-function locate(){
-  if(!navigator.geolocation){alert("이 브라우저는 위치 기능을 지원하지 않습니다.");return;}
-  navigator.geolocation.getCurrentPosition(pos=>{
-    const {latitude:lat,longitude:lng,accuracy} = pos.coords;
-    if(myMarker){map.removeLayer(myMarker);} if(myCircle){map.removeLayer(myCircle);}
-    myMarker=L.circleMarker([lat,lng],{radius:6,color:"#111",weight:2,fillColor:"#3b82f6",fillOpacity:0.9}).addTo(map).bindPopup("내 위치");
-    myCircle=L.circle([lat,lng],{radius:accuracy||50,color:"#2563eb",weight:1,fillColor:"#60a5fa",fillOpacity:0.2}).addTo(map);
-    map.flyTo([lat,lng],17);
-  },()=>alert("위치 권한을 허용해주세요."),{enableHighAccuracy:true,timeout:8000,maximumAge:0});
+/* ===== 자동 추적 (권한 저장 후 자동 시작) ===== */
+function startTracking(){
+  if(!('geolocation' in navigator))return;
+  if(watchId!=null)return;
+  watchId=navigator.geolocation.watchPosition(
+    pos=>{
+      const {latitude,longitude,accuracy,speed}=pos.coords;
+      const ts=pos.timestamp||Date.now();
+      showLocation(latitude,longitude,accuracy,ts,speed);
+      localStorage.setItem('geoConsent','granted');
+    },
+    err=>console.warn(err.message),
+    {enableHighAccuracy:true,timeout:15000,maximumAge:0}
+  );
 }
-document.getElementById("locBtn").addEventListener("click", locate);
-document.getElementById("mLocBtn").addEventListener("click", locate);
-
-// 전체 보기 (포커스 해제)
-function fitAll(){
-  circles.forEach(c=> c.setStyle({ fillOpacity:0.68, opacity:1 }));
-  if (bounds.isValid()) map.fitBounds(bounds);
+async function initGeo(){
+  const saved=localStorage.getItem('geoConsent');
+  if(saved==='granted'){startTracking();return;}
+  try{
+    if(navigator.permissions&&navigator.permissions.query){
+      const st=await navigator.permissions.query({name:'geolocation'});
+      if(st.state==='granted'){localStorage.setItem('geoConsent','granted');startTracking();return;}
+    }
+  }catch(e){}
+  startTracking(); // 최초 호출 → 브라우저 기본 팝업
 }
-document.getElementById("fitBtn").addEventListener("click", fitAll);
-document.getElementById("mFitBtn").addEventListener("click", fitAll);
+window.addEventListener('DOMContentLoaded',initGeo);
 </script>
 </body>
 </html>
