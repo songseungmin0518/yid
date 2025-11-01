@@ -20,7 +20,7 @@
     padding:8px 14px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.15)
   }
   .legend{
-    position:fixed;right:14px;bottom:14px;z-index:1000;
+    position:fixed;right:14px;bottom:70px;z-index:1000;
     background:rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.1);
     border-radius:10px;padding:10px 12px;font-size:12px;
     box-shadow:0 2px 10px rgba(0,0,0,.1);
@@ -32,6 +32,31 @@
     background:rgba(255,255,255,.85);border:1px solid rgba(0,0,0,.1);
     border-radius:999px;padding:6px 10px;font-size:12px;
     box-shadow:0 2px 10px rgba(0,0,0,.08)
+  }
+
+  /* === 따라가기 버튼 (흰색 스타일) === */
+  .follow-btn{
+    position:fixed;
+    right:14px;bottom:14px;z-index:1001;
+    background:#ffffff;
+    color:#111;
+    border:1px solid rgba(0,0,0,.25);
+    border-radius:8px;
+    padding:8px 14px;
+    font-size:12px;
+    font-weight:700;
+    box-shadow:0 2px 8px rgba(0,0,0,.2);
+    cursor:pointer;
+    transition:all .25s;
+  }
+  .follow-btn:hover{
+    background:#f1f1f1;
+  }
+  .follow-btn.off{
+    background:#ffffff;
+    color:#888;
+    border-color:rgba(0,0,0,.15);
+    box-shadow:0 1px 5px rgba(0,0,0,.1);
   }
 </style>
 </head>
@@ -47,6 +72,9 @@
 </div>
 <div class="dev-badge">Developer : <span id="dev-name"></span></div>
 
+<!-- 따라가기 버튼 -->
+<button id="followBtn" class="follow-btn">📍 따라가기 ON</button>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const DEV_NAME = "송승민 (10710)";
@@ -60,48 +88,20 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
 
 /* ===== 위험 구간 표시 ===== */
 function drawLine(coords,color){L.polyline(coords,{color,weight:6,opacity:.95}).addTo(map);}
-/* ===== 장미 - 정문 ===== */
+
+/* ===== 위험 구간 좌표 ===== */
 const red1=[[37.523572,126.933236],[37.524846,126.935203]];
-
-/* ===== 장미 - 화랑 ===== */
-const red2=[[37.523572,126.933236],[37.521413, 126.935403]];
-
-/* ===== 공작상가 - 여의나루 ===== */
+const red2=[[37.523572,126.933236],[37.521413,126.935403]];
 const red3=[[37.525388,126.930203],[37.526851,126.932534]];
-
-/* ==================================================================== */
-
-/* ===== 수정앞 - 장미 ===== */
 const orange1=[[37.522027,126.930762],[37.523572,126.933236]];
-
-/* ===== 여초 - 여의나루 ===== */
 const orange2=[[37.522933,126.937712],[37.526851,126.932534]];
-
-/* ===== 파바 - 여초 ===== */
 const orange3=[[37.520660,126.934149],[37.522933,126.937712]];
-
-/* ===== 브라이튼 - 공작상가 ===== */
 const orange4=[[37.524341,126.928403],[37.525388,126.930203]];
-
-/* ===== 공작상가 - 공작아파트 ===== */
 const orange5=[[37.525388,126.930203],[37.526411,126.929161]];
-
-/* ===== 서울아파트 - 여의나루 ===== */
 const orange6=[[37.527444,126.931781],[37.526851,126.932534]];
-
-/* ==================================================================== */
-
-/* ===== 브라이튼 - 한양상가 ===== */
 const green1=[[37.524341,126.928403],[37.519886,126.932920]];
-
-/* ===== 한양상가 - 파바 ===== */
 const green2=[[37.519886,126.932920],[37.520660,126.934149]];
-
-/* ===== 파바 - 브라이튼과 페어몬트 사이===== */
 const green3=[[37.520660,126.934149],[37.525093,126.929737]];
-
-
-
 [red1,red2,red3].forEach(l=>drawLine(l,"#e53935"));
 [orange1,orange2,orange3,orange4,orange5,orange6].forEach(l=>drawLine(l,"#ff7a00"));
 [green1,green2,green3].forEach(l=>drawLine(l,"#00c853"));
@@ -109,6 +109,9 @@ const green3=[[37.520660,126.934149],[37.525093,126.929737]];
 /* ===== 실시간 위치 추적 ===== */
 let marker=null, circle=null, watchId=null, lastFix=null, speedEMA=null;
 const spdEl=document.getElementById('spd');
+let followUser = true;
+let hadFirstFix = false;
+const followBtn = document.getElementById('followBtn');
 
 function haversine(lat1,lon1,lat2,lon2){
   const R=6371000,toRad=x=>x*Math.PI/180;
@@ -136,11 +139,16 @@ function showLocation(lat,lng,acc,ts,spd){
   }
   const kmh=isFinite(mps)?mps*3.6:NaN;
   if(isFinite(kmh))updateSpeed(kmh);
-  map.setView(latlng, map.getZoom(), {animate:true});
+
+  // 따라가기 모드일 때만 지도 이동
+  if(!hadFirstFix || followUser){
+    map.setView(latlng, map.getZoom(), {animate:true});
+  }
+  hadFirstFix = true;
   lastFix={lat,lng,time:ts};
 }
 
-/* ===== 자동 추적 (권한 저장 후 자동 시작) ===== */
+/* ===== 위치 트래킹 ===== */
 function startTracking(){
   if(!('geolocation' in navigator))return;
   if(watchId!=null)return;
@@ -155,6 +163,35 @@ function startTracking(){
     {enableHighAccuracy:true,timeout:15000,maximumAge:0}
   );
 }
+
+/* ===== 지도 조작 시 따라가기 OFF ===== */
+['dragstart','zoomstart','movestart'].forEach(ev=>{
+  map.on(ev, ()=>{
+    if(followUser){
+      followUser=false;
+      followBtn.classList.add('off');
+      followBtn.textContent='내 위치';
+    }
+  });
+});
+
+/* ===== 버튼 클릭 시 따라가기 토글 ===== */
+followBtn.addEventListener('click', ()=>{
+  followUser = !followUser;
+  if(followUser){
+    followBtn.classList.remove('off');
+    followBtn.textContent='내 위치';
+    if(marker){
+      const ll = marker.getLatLng();
+      map.setView(ll, map.getZoom(), {animate:true});
+    }
+  }else{
+    followBtn.classList.add('off');
+    followBtn.textContent='내 위치';
+  }
+});
+
+/* ===== 자동 시작 ===== */
 async function initGeo(){
   const saved=localStorage.getItem('geoConsent');
   if(saved==='granted'){startTracking();return;}
@@ -164,7 +201,7 @@ async function initGeo(){
       if(st.state==='granted'){localStorage.setItem('geoConsent','granted');startTracking();return;}
     }
   }catch(e){}
-  startTracking(); // 최초 호출 → 브라우저 기본 팝업
+  startTracking(); 
 }
 window.addEventListener('DOMContentLoaded',initGeo);
 </script>
